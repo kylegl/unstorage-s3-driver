@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.0",
   "packageManager": "pnpm@10.6.2",
-  "description": "_description_",
+  "description": "A custom Unstorage driver for AWS S3.",
   "author": "Kyle Lauber <linkdevk@gmail.com>",
   "license": "MIT",
   "homepage": "https://github.com/kylegl/unstorage-s3-driver#readme",
@@ -12,7 +12,14 @@
     "url": "git+https://github.com/kylegl/unstorage-s3-driver.git"
   },
   "bugs": "https://github.com/kylegl/unstorage-s3-driver/issues",
-  "keywords": [],
+  "keywords": [
+    "unstorage",
+    "driver",
+    "storage",
+    "s3",
+    "aws",
+    "typescript"
+  ],
   "sideEffects": false,
   "exports": {
     ".": "./dist/index.mjs",
@@ -35,6 +42,12 @@
     "typecheck": "tsc --noEmit",
     "prepare": "simple-git-hooks"
   },
+  "peerDependencies": {
+    "unstorage": "^1.10.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "catalog:driver"
+  },
   "devDependencies": {
     "@antfu/eslint-config": "catalog:cli",
     "@antfu/ni": "catalog:cli",
@@ -48,6 +61,7 @@
     "tsx": "catalog:cli",
     "typescript": "catalog:cli",
     "unbuild": "catalog:cli",
+    "unstorage": "catalog:driver",
     "vite": "catalog:cli",
     "vitest": "catalog:testing",
     "vitest-package-exports": "catalog:testing",
