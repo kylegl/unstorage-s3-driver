@@ -1,7 +1,7 @@
 {
   "name": "@kylegl/unstorage-s3-iam-driver",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "packageManager": "pnpm@10.6.2",
   "description": "A custom Unstorage driver for AWS S3.",
   "author": "Kyle Lauber <linkdevk@gmail.com>",
@@ -36,7 +36,7 @@
     "dev": "unbuild --stub",
     "lint": "eslint",
     "prepublishOnly": "nr build",
-    "release": "bumpp && pnpm publish",
+    "release": "bumpp && pnpm publish --access public",
     "start": "tsx src/index.ts",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
