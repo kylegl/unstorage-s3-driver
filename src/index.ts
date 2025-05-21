@@ -5,12 +5,12 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
-  ListObjectsV2Command, // Import specific error type for HeadObject
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
 import { defineDriver, joinKeys, normalizeKey } from 'unstorage'
-import { createRequiredError } from 'unstorage/drivers/utils/index'
+import { createError, createRequiredError } from 'unstorage/drivers/utils/index'
 
 // Helper to convert stream to string (UTF-8 assumed)
 async function streamToString(stream: GetObjectCommandOutput['Body']): Promise<string> {
@@ -48,7 +48,6 @@ export interface S3DriverOptions {
   bucket: string
 
   /**
-   * AWS Region (e.g., 'us-east-1')
    * If not provided, relies on AWS_REGION env var or AWS SDK default resolution.
    */
   region?: string
@@ -62,30 +61,23 @@ export interface S3DriverOptions {
 
   /**
    * Optional AWS S3 endpoint URL (primarily for S3 compatible services like MinIO/Localstack)
-   * If not provided, uses default AWS endpoints based on region.
    */
   endpoint?: string
 
   /**
    * AWS SDK S3 Client instance.
    * If not provided, a new client will be created.
-   * Useful for sharing clients or advanced configuration.
    */
   s3Client?: S3Client
 }
 
-// Use a unique name to avoid conflict with built-in 's3' if it exists
 const DRIVER_NAME = 'iam-s3'
 
 export default defineDriver((opts: S3DriverOptions) => {
-  if (!opts.bucket) {
-    throw createRequiredError(DRIVER_NAME, 'bucket')
-  }
-
   // Initialize S3 client - relies on default credential chain (IAM role)
   const s3 = opts.s3Client || new S3Client({
-    region: opts.region, // SDK handles undefined region okay
-    endpoint: opts.endpoint, // Pass endpoint if provided
+    region: opts.region,
+    endpoint: opts.endpoint,
   })
 
   const resolvedPrefix = opts.prefix ? normalizeKey(opts.prefix) : ''
@@ -99,9 +91,17 @@ export default defineDriver((opts: S3DriverOptions) => {
   const rPrefix = (key: string | undefined): string => {
     if (!key)
       return ''
+
     if (!resolvedPrefix)
       return key
+
     return key.startsWith(resolvedPrefix) ? key.substring(resolvedPrefix.length) : key
+  }
+
+  // eslint-disable-next-line ts/explicit-function-return-type
+  function requireBucket() {
+    if (!opts.bucket)
+      throw createRequiredError(DRIVER_NAME, 'bucket')
   }
 
   return {
@@ -109,6 +109,8 @@ export default defineDriver((opts: S3DriverOptions) => {
     options: opts,
 
     async hasItem(key) {
+      requireBucket()
+
       try {
         const command = new HeadObjectCommand({
           Bucket: opts.bucket,
@@ -119,16 +121,17 @@ export default defineDriver((opts: S3DriverOptions) => {
       }
       catch (error: any) {
         // HeadObject throws 'NotFound' in SDK v3 for non-existent keys
-        if (error.name === 'NotFound') {
+        if (error.name === 'NotFound')
           return false
-        }
-        // Rethrow other errors
-        console.error(`[Unstorage] [${DRIVER_NAME}] Error checking key ${r(key)}:`, error)
-        throw error
+
+        console.error(`[Unstorage][${DRIVER_NAME}] Error checking key ${r(key)}:`, error)
+        throw createError(DRIVER_NAME, `Error checking key ${r(key)}`)
       }
     },
 
     async getItem(key) {
+      requireBucket()
+
       try {
         const command = new GetObjectCommand({
           Bucket: opts.bucket,
@@ -152,17 +155,16 @@ export default defineDriver((opts: S3DriverOptions) => {
         return value
       }
       catch (error: any) {
-        if (error.name === 'NoSuchKey') {
-          // Key doesn't exist
+        if (error.name === 'NoSuchKey')
           return null
-        }
-        // Rethrow other errors
+
         console.error(`[Unstorage] [${DRIVER_NAME}] Error getting key ${r(key)}:`, error)
-        throw error
+        throw createError(DRIVER_NAME, `Error getting key ${r(key)}`)
       }
     },
 
     async getItemRaw(key) {
+      requireBucket()
       try {
         const command = new GetObjectCommand({
           Bucket: opts.bucket,
@@ -172,32 +174,22 @@ export default defineDriver((opts: S3DriverOptions) => {
         return await streamToBuffer(data.Body)
       }
       catch (error: any) {
-        if (error.name === 'NoSuchKey') {
+        if (error.name === 'NoSuchKey')
           return null
-        }
+
         console.error(`[Unstorage] [${DRIVER_NAME}] Error getting raw key ${r(key)}:`, error)
-        throw error
+        throw createError(DRIVER_NAME, `Error getting raw key ${r(key)}`)
       }
     },
 
-    async setItem(key, value: string) { // Value is expected to be a string by Unstorage contract
-      // Determine content type - basic check for JSON-like strings
-      let contentType = 'text/plain'
-      if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
-        try {
-          JSON.parse(value) // Verify it's valid JSON
-          contentType = 'application/json'
-        }
-        catch {
-          // Not valid JSON, keep 'text/plain'
-        }
-      }
+    async setItem(key, value: string) {
+      requireBucket()
 
       const command = new PutObjectCommand({
         Bucket: opts.bucket,
         Key: r(key),
-        Body: value, // Use the string value directly
-        ContentType: contentType,
+        Body: value,
+        ContentType: 'text/plain',
       })
 
       try {
@@ -205,7 +197,7 @@ export default defineDriver((opts: S3DriverOptions) => {
       }
       catch (error) {
         console.error(`[Unstorage] [${DRIVER_NAME}] Error setting key ${r(key)}:`, error)
-        throw error
+        throw createError(DRIVER_NAME, `Error setting key ${r(key)}`)
       }
     },
 
@@ -222,7 +214,7 @@ export default defineDriver((opts: S3DriverOptions) => {
       }
       catch (error) {
         console.error(`[Unstorage] [${DRIVER_NAME}] Error setting raw key ${r(key)}:`, error)
-        throw error
+        throw createError(DRIVER_NAME, `Error setting raw key ${r(key)}`)
       }
     },
 
@@ -237,7 +229,7 @@ export default defineDriver((opts: S3DriverOptions) => {
       }
       catch (error) {
         console.error(`[Unstorage] [${DRIVER_NAME}] Error removing key ${r(key)}:`, error)
-        throw error
+        throw createError(DRIVER_NAME, `Error removing key ${r(key)}`)
       }
     },
 
@@ -255,10 +247,8 @@ export default defineDriver((opts: S3DriverOptions) => {
           // Set the continuation token for subsequent requests
           command.input.ContinuationToken = continuationToken
 
-          // Send the command and await the response for THIS page
           const response = await s3.send(command)
 
-          // Process the contents of THIS page
           if (response.Contents) {
             keys.push(...response.Contents.map(item => rPrefix(item.Key)).filter(Boolean))
           }
@@ -271,13 +261,12 @@ export default defineDriver((opts: S3DriverOptions) => {
       }
       catch (error) {
         console.error(`[Unstorage] [${DRIVER_NAME}] Error listing keys with base ${resolvedBase}:`, error)
-        throw error
+        throw createError(DRIVER_NAME, `Error listing keys with base ${resolvedBase}`)
       }
     },
 
     async clear(base) {
-      // Note: getKeys now correctly handles pagination internally
-      const keys = await this.getKeys(base || '', {}) // Gets keys *without* the driver's internal prefix
+      const keys = await this.getKeys(base || '', {})
 
       if (keys.length === 0) {
         return
@@ -304,21 +293,14 @@ export default defineDriver((opts: S3DriverOptions) => {
         try {
           const output = await s3.send(command)
           if (output.Errors && output.Errors.length > 0) {
-            // Log errors for specific keys that failed
             console.error(`[Unstorage] [${DRIVER_NAME}] Errors during batch delete (batch starting index ${i}):`, output.Errors)
-            // Decide if you want to throw an error for partial failures
-          }
-          else {
-            // console.log(`[Unstorage] [${DRIVER_NAME}] Successfully deleted batch of ${keysToDelete.length} keys (starting index ${i}).`);
           }
         }
         catch (error) {
           console.error(`[Unstorage] [${DRIVER_NAME}] Error clearing keys with base '${base}' (batch starting index ${i}):`, error)
-          throw error // Throw if the whole batch request failed
+          throw createError(DRIVER_NAME, `Error clearing keys with base '${base}' (batch starting index ${i})`)
         }
       }
-      // eslint-disable-next-line no-console
-      console.log(`[Unstorage] [${DRIVER_NAME}] Finished clearing keys with base '${base}'.`)
     },
 
     async dispose() {
