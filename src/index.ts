@@ -10,6 +10,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 import { defineDriver, joinKeys, normalizeKey } from 'unstorage'
+import { createRequiredError } from 'unstorage/drivers/utils/index'
 
 // Helper to convert stream to string (UTF-8 assumed)
 async function streamToString(stream: GetObjectCommandOutput['Body']): Promise<string> {
@@ -78,7 +79,7 @@ const DRIVER_NAME = 'iam-s3'
 
 export default defineDriver((opts: S3DriverOptions) => {
   if (!opts.bucket) {
-    throw new Error(`[Unstorage] [${DRIVER_NAME}] Bucket name is required.`)
+    throw createRequiredError(DRIVER_NAME, 'bucket')
   }
 
   // Initialize S3 client - relies on default credential chain (IAM role)
@@ -332,7 +333,7 @@ export default defineDriver((opts: S3DriverOptions) => {
       // Watching S3 buckets for real-time changes is complex and
       // typically requires external infrastructure (S3 Events, SQS/Lambda).
       // This driver does not support active watching.
-      console.warn(`[Unstorage] [${DRIVER_NAME}] watch() is not implemented.`)
+
       // Return the required 'unwatch' function (which does nothing).
       const unwatch = (): void => { }
       return unwatch
